@@ -91,7 +91,7 @@ class AsyncMetricsCollector:
         # Otherwise, check if we should start a new copy.
         if self._should_collect_rejsample_metrics(self._timer()):
             assert self._in_flight_copy is None
-            self._in_flight_copy = self._copy_rejsample_metrics_async()
+            self._in_flight_copy = self._copy_rejsample_metrics_async(k)
 
         return None
 
@@ -107,7 +107,7 @@ class AsyncMetricsCollector:
             return False
         return True
 
-    def _copy_rejsample_metrics_async(self) -> torch.cuda.Event:
+    def _copy_rejsample_metrics_async(self,k) -> torch.cuda.Event:
         """Copy rejection/typical-acceptance sampling metrics 
         (number of accepted tokens, etc) to CPU asynchronously.
 
@@ -126,6 +126,34 @@ class AsyncMetricsCollector:
             # required.
             self._aggregate_num_draft_tokens = (
                 self.spec_decode_sampler.num_draft_tokens)
+            
+            
+            # accepted_tokens = self._aggregate_num_accepted_tokens.item()
+            # emitted_tokens = self._aggregate_num_emitted_tokens.item()
+            # draft_tokens = self._aggregate_num_draft_tokens
+            
+            # max_num_emitted_tokens = self.get_max_num_emitted_tokens(
+            #     draft_tokens, k)
+
+            # if draft_tokens > 0:
+            #     draft_acceptance_rate = accepted_tokens / draft_tokens
+            # else:
+            #     draft_acceptance_rate = float("nan")
+
+            # if max_num_emitted_tokens > 0:
+            #     system_efficiency = emitted_tokens / max_num_emitted_tokens
+            # else:
+            #     system_efficiency = float("nan")
+
+            # spec_decode_metrics = SpecDecodeWorkerMetrics(
+            #     num_spec_tokens=k,
+            #     draft_acceptance_rate=draft_acceptance_rate,
+            #     system_efficiency=system_efficiency,
+            #     accepted_tokens=accepted_tokens,
+            #     draft_tokens=draft_tokens,
+            #     emitted_tokens=emitted_tokens,
+            # )
+            # print('spec_decode_metrics', spec_decode_metrics)
 
         aggregate_metrics_ready = torch.cuda.Event()
         aggregate_metrics_ready.record(self._copy_stream)

@@ -64,6 +64,8 @@ def sample_requests(
 def run_vllm(
     requests: List[Tuple[str, int, int]],
     model: str,
+    speculative_model,
+    num_speculative_tokens,
     tokenizer: str,
     quantization: Optional[str],
     tensor_parallel_size: int,
@@ -88,6 +90,11 @@ def run_vllm(
     from vllm import LLM, SamplingParams
     llm = LLM(
         model=model,
+        speculative_model=speculative_model,
+        num_speculative_tokens=num_speculative_tokens,
+        speculative_draft_tensor_parallel_size=1 if speculative_model != None else None,
+        use_v2_block_manager=True,
+        disable_log_stats=False,
         tokenizer=tokenizer,
         quantization=quantization,
         tensor_parallel_size=tensor_parallel_size,
@@ -107,6 +114,30 @@ def run_vllm(
         distributed_executor_backend=distributed_executor_backend,
         load_format=load_format,
     )
+    
+    print('warmup started')
+    import numpy as np
+    from vllm.inputs import PromptInputs
+    dummy_prompt_token_ids = np.random.randint(10000,
+                                               size=(16,
+                                                     128))
+    dummy_inputs: List[PromptInputs] = [{
+        "prompt_token_ids": batch
+    } for batch in dummy_prompt_token_ids.tolist()]
+    for _ in range(10):
+        llm.generate(
+            dummy_inputs,
+            sampling_params=\
+                SamplingParams(
+                    n=n,
+                    temperature=0.0 if use_beam_search else 1.0,
+                    top_p=1.0,
+                    use_beam_search=use_beam_search,
+                    ignore_eos=True,
+                    max_tokens=16,
+                ),
+            use_tqdm=False)
+    print('warmup ended')
 
     # Add the requests to the engine.
     prompts: List[str] = []
@@ -225,7 +256,10 @@ def main(args: argparse.Namespace):
 
     if args.backend == "vllm":
         elapsed_time = run_vllm(
-            requests, args.model, args.tokenizer, args.quantization,
+            requests, args.model, 
+            args.speculative_model,
+            args.num_speculative_tokens,
+            args.tokenizer, args.quantization,
             args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
             args.trust_remote_code, args.dtype, args.max_model_len,
             args.enforce_eager, args.kv_cache_dtype,
@@ -246,7 +280,7 @@ def main(args: argparse.Namespace):
     total_num_tokens = sum(prompt_len + output_len
                            for _, prompt_len, output_len in requests)
     print(f"Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
-          f"{total_num_tokens / elapsed_time:.2f} tokens/s")
+          f"{total_num_tokens / elapsed_time:.2f} tokens/s, {elapsed_time/total_num_tokens:.5f} s/token")
 
     # Output JSON results if specified
     if args.output_json:
@@ -263,6 +297,8 @@ def main(args: argparse.Namespace):
 
 if __name__ == "__main__":
     parser = FlexibleArgumentParser(description="Benchmark the throughput.")
+    parser.add_argument('--speculative-model', type=str, default=None)
+    parser.add_argument('--num-speculative-tokens', type=int, default=None)
     parser.add_argument("--backend",
                         type=str,
                         choices=["vllm", "hf", "mii"],

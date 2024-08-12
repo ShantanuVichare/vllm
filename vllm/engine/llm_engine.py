@@ -233,6 +233,7 @@ class LLMEngine:
         self.observability_config = observability_config or ObservabilityConfig(
         )
         self.log_stats = log_stats
+        self.spec_decode_metrics = None
 
         if not self.model_config.skip_tokenizer_init:
             self.tokenizer = self._init_tokenizer()
@@ -1094,6 +1095,7 @@ class LLMEngine:
         if model_output and (model_output[0].spec_decode_worker_metrics
                              is not None):
             spec_decode_metrics = model_output[0].spec_decode_worker_metrics
+            self.spec_decode_metrics = spec_decode_metrics
         else:
             spec_decode_metrics = None
 

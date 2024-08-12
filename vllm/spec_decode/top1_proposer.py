@@ -7,7 +7,7 @@ from vllm.sequence import (ExecuteModelRequest, SamplerOutput,
 from vllm.spec_decode.interfaces import (SpeculativeProposals,
                                          SpeculativeProposer)
 from vllm.spec_decode.proposer_worker_base import ProposerWorkerBase
-from vllm.spec_decode.util import sampler_output_to_torch
+from vllm.spec_decode.util import (sampler_output_to_torch, nvtx_range)
 
 
 class Top1Proposer(SpeculativeProposer):
@@ -39,6 +39,7 @@ class Top1Proposer(SpeculativeProposer):
         self.max_proposal_len = max_proposal_len
         self._vocab_size = vocab_size
 
+    @nvtx_range("Top1Proposer.get_spec_proposals")
     def get_spec_proposals(
         self,
         execute_model_req: ExecuteModelRequest,
@@ -52,12 +53,14 @@ class Top1Proposer(SpeculativeProposer):
         proposal_len = execute_model_req.num_lookahead_slots
         seq_group_metadata_list = execute_model_req.seq_group_metadata_list
 
-        # Split speculative- and non-speculative- sequences.
-        (
-            proposal_lens,
-            nonzero_proposal_len_seqs,
-            nonzero_proposal_len_indices,
-        ) = self._split_by_proposal_len(seq_group_metadata_list, proposal_len)
+
+        with nvtx_range("get_spec_proposals.split_spec_non_spec"):
+            # Split speculative- and non-speculative- sequences.
+            (
+                proposal_lens,
+                nonzero_proposal_len_seqs,
+                nonzero_proposal_len_indices,
+            ) = self._split_by_proposal_len(seq_group_metadata_list, proposal_len)
 
         if nonzero_proposal_len_seqs:
             # Speculate tokens using the draft worker for the speculative
@@ -74,35 +77,38 @@ class Top1Proposer(SpeculativeProposer):
                 num_lookahead_slots=proposal_len,
                 previous_hidden_states=hidden_states,
             )
-            maybe_sampler_output, transposed = self._worker.sampler_output(
-                execute_model_req=nonzero_execute_model_req,
-                sample_len=proposal_len,
-                seq_ids_with_bonus_token_in_last_step=\
-                    seq_ids_with_bonus_token_in_last_step,
-            )
-            (
-                proposal_lens,
-                maybe_sampler_output,
-                nonzero_proposal_len_indices,
-            ) = self._remove_no_proposal_seqs(proposal_lens,
-                                              maybe_sampler_output,
-                                              nonzero_proposal_len_indices,
-                                              transposed)
+            with nvtx_range("get_spec_proposals.sampler_output"):
+                maybe_sampler_output, transposed = self._worker.sampler_output(
+                    execute_model_req=nonzero_execute_model_req,
+                    sample_len=proposal_len,
+                    seq_ids_with_bonus_token_in_last_step=\
+                        seq_ids_with_bonus_token_in_last_step,
+                )
+            with nvtx_range("get_spec_proposals.remove_no_proposals"):
+                (
+                    proposal_lens,
+                    maybe_sampler_output,
+                    nonzero_proposal_len_indices,
+                ) = self._remove_no_proposal_seqs(proposal_lens,
+                                                maybe_sampler_output,
+                                                nonzero_proposal_len_indices,
+                                                transposed)
         else:
             # If no sequences can be speculated, set sampler output to None.
             maybe_sampler_output = None
             transposed = False
 
-        # Combine speculative- and non-speculative sequences into the same
-        # representation.
-        proposal_tokens, proposal_probs, proposal_lens = self._merge_outputs(
-            batch_size=len(seq_group_metadata_list),
-            proposal_len=proposal_len,
-            maybe_sampler_output=maybe_sampler_output,
-            proposal_lens=proposal_lens,
-            nonzero_proposal_len_indices=nonzero_proposal_len_indices,
-            sampler_transposed=transposed,
-        )
+        with nvtx_range("get_spec_proposals.merge_outputs"):
+            # Combine speculative- and non-speculative sequences into the same
+            # representation.
+            proposal_tokens, proposal_probs, proposal_lens = self._merge_outputs(
+                batch_size=len(seq_group_metadata_list),
+                proposal_len=proposal_len,
+                maybe_sampler_output=maybe_sampler_output,
+                proposal_lens=proposal_lens,
+                nonzero_proposal_len_indices=nonzero_proposal_len_indices,
+                sampler_transposed=transposed,
+            )
 
         proposals = SpeculativeProposals(
             proposal_token_ids=proposal_tokens,

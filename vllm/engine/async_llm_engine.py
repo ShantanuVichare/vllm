@@ -851,6 +851,10 @@ class AsyncLLMEngine:
             >>> # Process and return the final output
             >>> ...
         """
+        if not self.engine.model_config.embedding_mode:
+            raise ValueError(
+                "Create embeddings API is only supported for embedding models (XModel)."
+            )
         async for output in self._process_request(
                 request_id,
                 inputs,

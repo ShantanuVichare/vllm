@@ -10,7 +10,7 @@ from threading import Thread
 from typing import Any, Dict, Optional, Union
 from uuid import uuid4
 
-import cpuinfo
+# import cpuinfo
 import psutil
 import requests
 import torch
@@ -161,14 +161,14 @@ class UsageMessage:
         self.platform = platform.platform()
         self.total_memory = psutil.virtual_memory().total
 
-        info = cpuinfo.get_cpu_info()
-        self.num_cpu = info.get("count", None)
-        self.cpu_type = info.get("brand_raw", "")
-        self.cpu_family_model_stepping = ",".join([
-            str(info.get("family", "")),
-            str(info.get("model", "")),
-            str(info.get("stepping", ""))
-        ])
+        # info = cpuinfo.get_cpu_info()
+        # self.num_cpu = info.get("count", None)
+        # self.cpu_type = info.get("brand_raw", "")
+        # self.cpu_family_model_stepping = ",".join([
+        #     str(info.get("family", "")),
+        #     str(info.get("model", "")),
+        #     str(info.get("stepping", ""))
+        # ])
 
         # vLLM information
         self.context = usage_context.value

@@ -49,7 +49,8 @@ class MultiStepOutputProcessor(SequenceGroupOutputProcessor):
                                outputs: List[SequenceGroupOutput]) -> None:
         # TODO(sang): Prompt logprob currently not implemented in multi step
         # workers.
-        self._log_prompt_logprob_unsupported_warning_once()
+        # self._log_prompt_logprob_unsupported_warning_once()
+        pass
 
     @staticmethod
     @functools.lru_cache()

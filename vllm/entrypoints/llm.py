@@ -17,6 +17,7 @@ from vllm.sampling_params import SamplingParams
 from vllm.transformers_utils.tokenizer import get_cached_tokenizer
 from vllm.usage.usage_lib import UsageContext
 from vllm.utils import Counter, deprecate_kwargs
+import torch
 
 logger = init_logger(__name__)
 
@@ -124,6 +125,7 @@ class LLM:
         disable_custom_all_reduce: bool = False,
         **kwargs,
     ) -> None:
+        print('editable installation 0')
         if "disable_log_stats" not in kwargs:
             kwargs["disable_log_stats"] = True
         removed_vision_keys = ("image_token_id", "image_feature_size",
@@ -290,6 +292,13 @@ class LLM:
             considered legacy and may be deprecated in the future. You should
             instead pass them via the ``inputs`` parameter.
         """
+        # print(self.llm_engine.model_executor.driver_worker.spec_decode_sampler.num_accepted_tokens)
+        # print(self.llm_engine.model_executor.driver_worker.spec_decode_sampler.num_emitted_tokens)
+        # print(self.llm_engine.model_executor.driver_worker.spec_decode_sampler.num_draft_tokens)
+        de_ = self.llm_engine.model_executor.driver_worker.spec_decode_sampler.num_accepted_tokens.device
+        self.llm_engine.model_executor.driver_worker.spec_decode_sampler.num_accepted_tokens = torch.tensor(0, device=de_)
+        self.llm_engine.model_executor.driver_worker.spec_decode_sampler.num_emitted_tokens = torch.tensor(0, device=de_)
+        self.llm_engine.model_executor.driver_worker.spec_decode_sampler.num_draft_tokens = 0
         if self.llm_engine.model_config.embedding_mode:
             raise ValueError(
                 "LLM.generate() is only supported for generation models "
@@ -314,7 +323,7 @@ class LLM:
             prompt_adapter_request=prompt_adapter_request)
 
         outputs = self._run_engine(use_tqdm=use_tqdm)
-        return LLMEngine.validate_outputs(outputs, RequestOutput)
+        return LLMEngine.validate_outputs(outputs, RequestOutput) + [self.llm_engine.spec_decode_metrics]
 
     @overload  # LEGACY: single (prompt + optional token ids)
     def encode(
